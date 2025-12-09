@@ -1,0 +1,1182 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1.0" />
+<title>Hệ Thống Quan Trắc Môi Trường - ESP32</title>
+
+<!-- CHỈ CÒN Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<!-- Styles: giữ nguyên -->
+<style>
+  :root{
+    --bg: #f1f6fb;
+    --card: #ffffff;
+    --muted:#6b7280;
+    --accent: #007bff;
+    --accent-2:#0056d6;
+    --success:#16a34a;
+    --danger:#e11d48;
+    --warning:#f59e0b;
+    --glass: rgba(255,255,255,0.6);
+    --radius:12px;
+    --shadow: 0 6px 20px rgba(15,23,42,0.08);
+    --glass-2: rgba(0,0,0,0.03);
+  }
+  [data-theme="dark"]{
+    --bg: #0b1020;
+    --card: #0f1724;
+    --muted: #9ca3af;
+    --accent: #4fc3ff;
+    --accent-2:#1e90ff;
+    --success:#34d399;
+    --danger:#fb7185;
+    --warning:#fbbf24;
+    --glass: rgba(255,255,255,0.03);
+    --glass-2: rgba(255,255,255,0.02);
+    color: #e6eef8;
+  }
+
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;
+    font-family: Inter, "Segoe UI", Roboto, Arial, sans-serif;
+    background: linear-gradient(180deg, var(--bg) 0%, rgba(0,0,0,0.02) 100%);
+    -webkit-font-smoothing:antialiased;
+    -moz-osx-font-smoothing:grayscale;
+    color: #071133;
+  }
+
+  header.topbar{
+    display:flex;
+    gap:12px;
+    align-items:center;
+    justify-content:space-between;
+    padding:14px 18px;
+    background: linear-gradient(90deg,var(--accent),var(--accent-2));
+    color:white;
+    position:sticky;
+    top:0;
+    z-index:50;
+    box-shadow:var(--shadow);
+  }
+  header .title { 
+    font-weight:700; 
+    font-size:18px;
+    white-space: nowrap;
+    min-width: 300px;
+  }
+  header .controls { 
+    display:flex; 
+    gap:10px; 
+    align-items:center; 
+    justify-content: flex-end;
+    flex-wrap: nowrap;
+    overflow: visible;
+  }
+
+  .container{
+    width:95%;
+    max-width:1200px;
+    margin:18px auto;
+  }
+
+  /* GRID of cards - 2 rows with 3 columns each */
+  .grid {
+    display:grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap:16px;
+    align-items:stretch;
+    margin-top: 20px;
+  }
+  
+  @media (max-width: 768px) {
+    .grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+  
+  @media (max-width: 480px) {
+    .grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .card{
+    background:var(--card);
+    border-radius:var(--radius);
+    padding:14px;
+    box-shadow:var(--shadow);
+    transition:transform .18s ease, box-shadow .18s ease;
+    overflow:hidden;
+    height: 100%;
+  }
+  .card:hover{ transform:translateY(-6px); box-shadow:0 12px 32px rgba(2,6,23,0.12) }
+
+  .card .name{ font-size:14px; color:var(--muted); font-weight:600 }
+  .card .value{ font-size:32px; font-weight:700; color:var(--accent); margin-top:6px }
+  .card .meta{ font-size:12px; color:var(--muted); margin-top:6px }
+
+  /* small sparkline canvas */
+  .sparkline{ width:100%; height:36px; display:block; margin-top:8px }
+
+  /* main charts */
+  .charts {
+    display:grid;
+    grid-template-columns: 1fr;
+    gap:16px;
+    margin-top:30px;
+  }
+  @media(min-width:900px){
+    .charts{ grid-template-columns: 1fr 1fr; }
+  }
+  .chart-card{ height:300px; }
+
+  .big-chart{ height:380px; }
+
+  /* history table */
+  .history {
+    margin-top:18px;
+    background:var(--card);
+    border-radius:var(--radius);
+    padding:12px;
+    box-shadow:var(--shadow);
+    max-height: 300px;
+    overflow-y: auto;
+    overflow-x: auto;
+  }
+  .history {
+    max-height: 320px;
+    overflow-y: auto;
+    overflow-x: auto;
+    position: relative;
+  }
+
+  .history-header {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    padding-bottom: 8px;
+    background: var(--card);
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    padding-top: 8px;
+  }
+
+  .history table{
+    width:100%;
+    border-collapse:collapse;
+    font-size:13px;
+  }
+  .history th, .history td{
+    padding:8px 10px;
+    text-align:center;
+    border-bottom:1px solid var(--glass-2);
+  }
+  .history th{ position:sticky; top:0; background:linear-gradient(180deg,var(--card),var(--glass)); font-weight:600}
+  .age{ font-weight:700; }
+
+  /* controls & alerts */
+  .controls-panel{
+    display:flex;
+    gap:8px;
+    align-items:center;
+    background:var(--card);
+    padding:8px 12px;
+    border-radius:10px;
+    box-shadow:var(--shadow);
+    flex-wrap: nowrap;
+    white-space: nowrap;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  /* Hide scrollbar for controls panel */
+  .controls-panel::-webkit-scrollbar {
+    display: none;
+  }
+  .controls-panel {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .btn{
+    background:var(--accent);
+    color:white;
+    padding:8px 12px;
+    border-radius:8px;
+    border:0;
+    cursor:pointer;
+    font-weight:600;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .btn.secondary{ 
+    background:transparent; 
+    color:var(--accent); 
+    border:1px solid var(--glass-2);
+    flex-shrink: 0;
+  }
+
+  .threshold-input{ 
+    width:70px; 
+    padding:6px 8px; 
+    border-radius:8px; 
+    border:1px solid var(--glass-2);
+    flex-shrink: 0;
+  }
+
+.controls-panel label {
+    font-size: 12px;
+    color: var(--muted);
+}
+
+
+  /* alert banner */
+  #alert-bar{
+    display:none;
+    background: linear-gradient(90deg,var(--danger), #ff6b6b);
+    color:white;
+    padding:10px 14px;
+    border-radius:10px;
+    margin-bottom:12px;
+    font-weight:700;
+  }
+
+  footer {
+    width:95%;
+    max-width:1200px;
+    margin:18px auto 60px;
+    color:var(--muted);
+    font-size:13px;
+    text-align:center;
+  }
+
+  /* small helpers */
+  .muted{ color:var(--muted) }
+  .flex{ display:flex; gap:10px; align-items:center }
+  .right{ margin-left:auto }
+  
+  /* Time display styles */
+ .time-display {
+    font-size: 12px;
+    color: var(--muted);
+    margin-left: 10px;
+    white-space: nowrap;
+}
+
+  /* Responsive adjustments */
+  @media (max-width: 1024px) {
+    header.topbar {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 10px;
+    }
+    
+    header .title {
+      min-width: auto;
+      text-align: center;
+    }
+    
+    header .controls {
+      justify-content: center;
+    }
+    
+    .controls-panel {
+      justify-content: center;
+    }
+  }
+  
+  @media (max-width: 768px) {
+    .controls-panel {
+      padding: 6px 8px;
+      gap: 6px;
+    }
+    
+    .threshold-input {
+      width: 60px;
+      padding: 4px 6px;
+    }
+    
+    .btn {
+      padding: 6px 10px;
+      font-size: 13px;
+    }
+    
+    .controls-panel label {
+      font-size: 11px;
+    }
+  }
+  
+  @media (max-width: 480px) {
+    header.topbar {
+      padding: 12px 10px;
+    }
+    
+    .controls-panel {
+      gap: 4px;
+      padding: 4px 6px;
+    }
+    
+    .threshold-input {
+      width: 50px;
+      padding: 3px 4px;
+      font-size: 12px;
+    }
+    
+    .btn {
+      padding: 4px 8px;
+      font-size: 12px;
+    }
+    
+    .controls-panel label {
+      font-size: 10px;
+    }
+  }
+
+</style>
+</head>
+<body data-theme="light">
+
+<header class="topbar">
+  <div class="title">HỆ THỐNG QUAN TRẮC MÔI TRƯỜNG - ESP32</div>
+  <div class="controls">
+    <div class="controls-panel" role="region" aria-label="controls">
+      <label class="muted">PM1.0:</label>
+      <input id="thr-pm1" class="threshold-input" type="number" min="0" value="25" title="Ngưỡng cảnh báo PM1.0" />
+      <label class="muted">PM2.5:</label>
+      <input id="thr-pm25" class="threshold-input" type="number" min="0" value="35" title="Ngưỡng cảnh báo PM2.5" />
+      <label class="muted">PM10:</label>
+      <input id="thr-pm10" class="threshold-input" type="number" min="0" value="50" title="Ngưỡng cảnh báo PM10" />
+      <label class="muted">CO₂:</label>
+      <input id="thr-co2" class="threshold-input" type="number" min="0" value="2000" title="Ngưỡng cảnh báo CO₂" />
+      <button id="save-thr" class="btn" title="Lưu ngưỡng cảnh báo">Lưu</button>
+      <button id="toggle-theme" class="btn secondary" title="Chuyển đổi chế độ sáng/tối">🌙</button>
+      <div class="time-display" id="current-time">--:--:--</div>
+    </div>
+  </div>
+</header>
+
+<main class="container">
+  <div id="alert-bar"></div>
+
+  <!-- top cards - organized in 2 rows -->
+  <section class="grid" aria-label="sensor cards">
+    <!-- Row 1: Temperature, Humidity, CO2 -->
+    <div class="card" id="card-temp">
+      <div class="name">🌡️ Nhiệt độ</div>
+      <div class="value" id="temp">-- °C</div>
+      <div class="meta">Cập nhật: <span id="temp-time">--</span> ・ Tuổi: <span id="temp-age">--</span>s</div>
+      <canvas id="spark-temp" class="sparkline"></canvas>
+    </div>
+
+    <div class="card" id="card-hum">
+      <div class="name">💧 Độ ẩm</div>
+      <div class="value" id="hum">-- %</div>
+      <div class="meta">Cập nhật: <span id="hum-time">--</span> ・ Tuổi: <span id="hum-age">--</span>s</div>
+      <canvas id="spark-hum" class="sparkline"></canvas>
+    </div>
+
+    <div class="card" id="card-co2">
+      <div class="name">☁️ CO₂</div>
+      <div class="value" id="CO2">-- ppm</div>
+      <div class="meta">Cập nhật: <span id="CO2-time">--</span> ・ Tuổi: <span id="CO2-age">--</span>s</div>
+      <canvas id="spark-co2" class="sparkline"></canvas>
+    </div>
+
+    <!-- Row 2: PM1.0, PM2.5, PM10 -->
+    <div class="card" id="card-pm1">
+      <div class="name">🌫️ PM1.0 (siêu mịn)</div>
+      <div class="value" id="pm1">-- µg/m³</div>
+      <div class="meta">Cập nhật: <span id="pm1-time">--</span> ・ Tuổi: <span id="pm1-age">--</span>s</div>
+      <canvas id="spark-pm1" class="sparkline"></canvas>
+    </div>
+
+    <div class="card" id="card-pm25">
+      <div class="name">🌫️ PM2.5 (mịn)</div>
+      <div class="value" id="pm25">-- µg/m³</div>
+      <div class="meta">Cập nhật: <span id="pm25-time">--</span> ・ Tuổi: <span id="pm25-age">--</span>s</div>
+      <canvas id="spark-pm25" class="sparkline"></canvas>
+    </div>
+
+    <div class="card" id="card-pm10">
+      <div class="name">🌫️ PM10 (thô)</div>
+      <div class="value" id="pm10">-- µg/m³</div>
+      <div class="meta">Cập nhật: <span id="pm10-time">--</span> ・ Tuổi: <span id="pm10-age">--</span>s</div>
+      <canvas id="spark-pm10" class="sparkline"></canvas>
+    </div>
+  </section>
+
+  <!-- charts -->
+  <section class="charts">
+    <div class="card chart-card">
+      <div class="name">📈 Biểu đồ Nhiệt độ</div>
+      <canvas id="chart-temp" style="height:220px"></canvas>
+    </div>
+    <div class="card chart-card">
+      <div class="name">📈 Biểu đồ Độ ẩm</div>
+      <canvas id="chart-hum" style="height:220px"></canvas>
+    </div>
+
+    <div class="card chart-card">
+      <div class="name">📈 Biểu đồ PM1.0</div>
+      <canvas id="chart-pm1" style="height:220px"></canvas>
+    </div>
+    <div class="card chart-card">
+      <div class="name">📈 Biểu đồ PM2.5</div>
+      <canvas id="chart-pm25" style="height:220px"></canvas>
+    </div>
+
+    <div class="card chart-card">
+      <div class="name">📈 Biểu đồ PM10</div>
+      <canvas id="chart-pm10" style="height:220px"></canvas>
+    </div>
+    <div class="card chart-card">
+      <div class="name">📈 Biểu đồ CO₂</div>
+      <canvas id="chart-co2" style="height:220px"></canvas>
+    </div>
+
+    <div class="card big-chart" style="grid-column:1 / -1;">
+      <div class="name">📊 Biểu đồ Tổng Hợp (Bụi Mịn)</div>
+      <canvas id="chart-combined" style="height:320px"></canvas>
+    </div>
+  </section>
+
+  <!-- history -->
+  <section class="history" aria-label="history">
+    <div class="history-header">
+      <div style="font-weight:700">📋 Bảng Lịch Sử (mới nhất ở trên)</div>
+      <input id="search" placeholder="🔍 Tìm kiếm timestamp..." style="margin-left:12px;padding:8px;border-radius:8px;border:1px solid var(--glass-2);flex:1" />
+      <button id="clear-history" class="btn secondary">🗑️ Xóa lịch sử</button>
+    </div>
+
+    <div style="overflow:auto">
+      <table id="history-table">
+        <thead>
+          <tr>
+            <th>Timestamp</th>
+            <th>Temp (°C)</th>
+            <th>Hum (%)</th>
+            <th>PM1.0 (µg/m³)</th>
+            <th>PM2.5 (µg/m³)</th>
+            <th>PM10 (µg/m³)</th>
+            <th>CO₂ (ppm)</th>
+            <th>Temp age (s)</th>
+            <th>Hum age (s)</th>
+            <th>PM1.0 age (s)</th>
+            <th>PM2.5 age (s)</th>
+            <th>PM10 age (s)</th>
+            <th>CO₂ age (s)</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  © Hệ thống quan trắc — Dữ liệu realtime từ ESP32 → HiveMQ → Node.js → MongoDB Atlas
+</footer>
+
+<!-- audio for alert -->
+<audio id="alert-sound">
+  <source src="https://actions.google.com/sounds/v1/alarms/medium_bell_ringing_near.ogg" type="audio/ogg">
+  <source src="https://actions.google.com/sounds/v1/alarms/medium_bell_ringing_near.mp3" type="audio/mpeg">
+</audio>
+
+<!-- Script: logic -->
+<script>
+/* ===========================
+   CONFIGURATION - KẾT NỐI ĐẾN SERVER CỦA BẠN
+   =========================== */
+const SSE_URL = 'http://localhost:3000/sse';  // SSE endpoint
+const API_BASE_URL = 'http://localhost:3000/api';  // REST API endpoint
+
+let eventSource = null;
+let isConnected = false;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 10;
+
+/* UI elements */
+const ui = {
+  temp: document.getElementById('temp'),
+  hum: document.getElementById('hum'),
+  pm1: document.getElementById('pm1'),
+  pm25: document.getElementById('pm25'),
+  pm10: document.getElementById('pm10'),
+  co2: document.getElementById('CO2'),
+  tempTime: document.getElementById('temp-time'),
+  humTime: document.getElementById('hum-time'),
+  pm1Time: document.getElementById('pm1-time'),
+  pm25Time: document.getElementById('pm25-time'),
+  pm10Time: document.getElementById('pm10-time'),
+  co2Time: document.getElementById('CO2-time'),
+  tempAge: document.getElementById('temp-age'),
+  humAge: document.getElementById('hum-age'),
+  pm1Age: document.getElementById('pm1-age'),
+  pm25Age: document.getElementById('pm25-age'),
+  pm10Age: document.getElementById('pm10-age'),
+  co2Age: document.getElementById('CO2-age'),
+  alertBar: document.getElementById('alert-bar'),
+  alertSound: document.getElementById('alert-sound'),
+  historyTable: document.querySelector('#history-table tbody'),
+  searchInput: document.getElementById('search'),
+  clearHistoryBtn: document.getElementById('clear-history'),
+  currentTime: document.getElementById('current-time')
+};
+
+/* thresholds stored in localStorage */
+const storageKeys = { 
+  pm1: 'threshold_pm1',
+  pm25: 'threshold_pm25', 
+  pm10: 'threshold_pm10', 
+  co2: 'threshold_co2', 
+  theme: 'theme_pref' 
+};
+const thrPM1Input = document.getElementById('thr-pm1');
+const thrPM25Input = document.getElementById('thr-pm25');
+const thrPM10Input = document.getElementById('thr-pm10');
+const thrCO2Input = document.getElementById('thr-co2');
+const saveThrBtn = document.getElementById('save-thr');
+const toggleThemeBtn = document.getElementById('toggle-theme');
+
+function loadThresholds(){
+  const t1 = localStorage.getItem(storageKeys.pm1);
+  const t25 = localStorage.getItem(storageKeys.pm25);
+  const t10 = localStorage.getItem(storageKeys.pm10);
+  const tc = localStorage.getItem(storageKeys.co2);
+  if(t1) thrPM1Input.value = t1;
+  if(t25) thrPM25Input.value = t25;
+  if(t10) thrPM10Input.value = t10;
+  if(tc) thrCO2Input.value = tc;
+}
+loadThresholds();
+
+saveThrBtn.addEventListener('click', ()=>{
+  localStorage.setItem(storageKeys.pm1, thrPM1Input.value);
+  localStorage.setItem(storageKeys.pm25, thrPM25Input.value);
+  localStorage.setItem(storageKeys.pm10, thrPM10Input.value);
+  localStorage.setItem(storageKeys.co2, thrCO2Input.value);
+  showToast('✅ Ngưỡng đã lưu');
+});
+
+/* theme */
+function setTheme(t){
+  document.body.setAttribute('data-theme', t);
+  localStorage.setItem(storageKeys.theme, t);
+  toggleThemeBtn.textContent = t === 'dark' ? '☀️' : '🌙';
+}
+const savedTheme = localStorage.getItem(storageKeys.theme) || 'light';
+setTheme(savedTheme);
+toggleThemeBtn.addEventListener('click', ()=>{
+  const next = document.body.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+  setTheme(next);
+});
+
+/* data containers and ages */
+let ages = { temp:0, hum:0, pm1:0, pm25:0, pm10:0, co2:0 };
+let latest = { temp:null, hum:null, pm1:null, pm25:null, pm10:null, co2:null };
+
+/* arrays for charts */
+const MAX_POINTS = 40;
+const labels = [];
+const series = { temp:[], hum:[], pm1:[], pm25:[], pm10:[], co2:[] };
+
+/* Update current time display */
+function updateCurrentTime() {
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString('vi-VN');
+  ui.currentTime.textContent = timeStr;
+}
+setInterval(updateCurrentTime, 1000);
+updateCurrentTime();
+
+/* helper: update ages every second */
+setInterval(()=> {
+  ages.temp += 1; ages.hum +=1; ages.pm1+=1; ages.pm25+=1; ages.pm10+=1; ages.co2+=1;
+  ui.tempAge.textContent = ages.temp.toFixed(0);
+  ui.humAge.textContent = ages.hum.toFixed(0);
+  ui.pm1Age.textContent = ages.pm1.toFixed(0);
+  ui.pm25Age.textContent = ages.pm25.toFixed(0);
+  ui.pm10Age.textContent = ages.pm10.toFixed(0);
+  ui.co2Age.textContent = ages.co2.toFixed(0);
+}, 1000);
+
+/* ============= CHARTS (Chart.js) ============= */
+function makeLine(ctx, label, color){
+  return new Chart(ctx, {
+    type:'line',
+    data:{
+      labels:[],
+      datasets:[{
+        label: label,
+        data:[],
+        borderColor: color,
+        backgroundColor: color,
+        fill:false,
+        pointRadius:0,
+        borderWidth:2,
+        tension: 0.35
+      }]
+    },
+    options:{
+      animation:false,
+      responsive:true,
+      plugins:{ legend:{ display:false } },
+      scales:{
+        x:{ display:false },
+        y:{ ticks:{ maxTicksLimit:4 } }
+      },
+      elements:{
+        line:{capBezierPoints:true}
+      }
+    }
+  });
+}
+
+/* big charts */
+const chartTemp = new Chart(document.getElementById('chart-temp').getContext('2d'), {
+  type:'line',
+  data:{ labels:[], datasets:[{ label:'Nhiệt độ °C', data:[], borderColor:'#ff5a5f', backgroundColor:'rgba(255,90,95,0.06)', fill:true, tension:0.35 }] },
+  options:{ responsive:true, maintainAspectRatio:false }
+});
+const chartHum = new Chart(document.getElementById('chart-hum').getContext('2d'), {
+  type:'line',
+  data:{ labels:[], datasets:[{ label:'Độ ẩm %', data:[], borderColor:'#1e90ff', backgroundColor:'rgba(30,144,255,0.06)', fill:true, tension:0.35 }] },
+  options:{ responsive:true, maintainAspectRatio:false }
+});
+const chartPM1 = new Chart(document.getElementById('chart-pm1').getContext('2d'), {
+  type:'line',
+  data:{ labels:[], datasets:[{ label:'PM1.0 µg/m³', data:[], borderColor:'#9c27b0', backgroundColor:'rgba(156,39,176,0.06)', fill:true, tension:0.35 }] },
+  options:{ responsive:true, maintainAspectRatio:false }
+});
+const chartPM25 = new Chart(document.getElementById('chart-pm25').getContext('2d'), {
+  type:'line',
+  data:{ labels:[], datasets:[{ label:'PM2.5 µg/m³', data:[], borderColor:'#8b5a2b', backgroundColor:'rgba(139,90,43,0.06)', fill:true, tension:0.35 }] },
+  options:{ responsive:true, maintainAspectRatio:false }
+});
+const chartPM10 = new Chart(document.getElementById('chart-pm10').getContext('2d'), {
+  type:'line',
+  data:{ labels:[], datasets:[{ label:'PM10 µg/m³', data:[], borderColor:'#ff9800', backgroundColor:'rgba(255,152,0,0.06)', fill:true, tension:0.35 }] },
+  options:{ responsive:true, maintainAspectRatio:false }
+});
+const chartCO2 = new Chart(document.getElementById('chart-co2').getContext('2d'), {
+  type:'line',
+  data:{ labels:[], datasets:[{ label:'CO₂ ppm', data:[], borderColor:'#ffb703', backgroundColor:'rgba(255,183,3,0.06)', fill:true, tension:0.35 }] },
+  options:{ responsive:true, maintainAspectRatio:false }
+});
+const chartCombined = new Chart(document.getElementById('chart-combined').getContext('2d'), {
+  type:'line',
+  data:{
+    labels:[],
+    datasets:[
+      { label:'PM1.0', data:[], borderColor:'#9c27b0', fill:false, tension:0.3, yAxisID:'y' },
+      { label:'PM2.5', data:[], borderColor:'#8b5a2b', fill:false, tension:0.3, yAxisID:'y' },
+      { label:'PM10', data:[], borderColor:'#ff9800', fill:false, tension:0.3, yAxisID:'y' }
+    ]
+  },
+  options:{
+    responsive:true, maintainAspectRatio:false,
+    scales:{
+      y:{ type:'linear', display:true, position:'left', title:{display:true,text:'Bụi mịn (µg/m³)'} }
+    }
+  }
+});
+
+/* sparkline small charts */
+const sparkTemp = makeLine(document.getElementById('spark-temp').getContext('2d'), 't', '#ff5a5f');
+const sparkHum = makeLine(document.getElementById('spark-hum').getContext('2d'), 'h', '#1e90ff');
+const sparkPM1 = makeLine(document.getElementById('spark-pm1').getContext('2d'), 'pm1', '#9c27b0');
+const sparkPM25 = makeLine(document.getElementById('spark-pm25').getContext('2d'), 'pm25', '#8b5a2b');
+const sparkPM10 = makeLine(document.getElementById('spark-pm10').getContext('2d'), 'pm10', '#ff9800');
+const sparkCO2 = makeLine(document.getElementById('spark-co2').getContext('2d'), 'c', '#ffb703');
+
+/* helper: push new values into series, keep MAX_POINTS */
+function pushPoint(t, valTemp, valHum, valPM1, valPM25, valPM10, valCO2){
+  labels.push(t);
+  if(labels.length>MAX_POINTS) labels.shift();
+  const s = series;
+  s.temp.push(valTemp); if(s.temp.length>MAX_POINTS) s.temp.shift();
+  s.hum.push(valHum); if(s.hum.length>MAX_POINTS) s.hum.shift();
+  s.pm1.push(valPM1); if(s.pm1.length>MAX_POINTS) s.pm1.shift();
+  s.pm25.push(valPM25); if(s.pm25.length>MAX_POINTS) s.pm25.shift();
+  s.pm10.push(valPM10); if(s.pm10.length>MAX_POINTS) s.pm10.shift();
+  s.co2.push(valCO2); if(s.co2.length>MAX_POINTS) s.co2.shift();
+
+  // update charts
+  chartTemp.data.labels = labels; chartTemp.data.datasets[0].data = s.temp; chartTemp.update();
+  chartHum.data.labels = labels; chartHum.data.datasets[0].data = s.hum; chartHum.update();
+  chartPM1.data.labels = labels; chartPM1.data.datasets[0].data = s.pm1; chartPM1.update();
+  chartPM25.data.labels = labels; chartPM25.data.datasets[0].data = s.pm25; chartPM25.update();
+  chartPM10.data.labels = labels; chartPM10.data.datasets[0].data = s.pm10; chartPM10.update();
+  chartCO2.data.labels = labels; chartCO2.data.datasets[0].data = s.co2; chartCO2.update();
+  chartCombined.data.labels = labels;
+  chartCombined.data.datasets[0].data = s.pm1;
+  chartCombined.data.datasets[1].data = s.pm25;
+  chartCombined.data.datasets[2].data = s.pm10;
+  chartCombined.update();
+
+  // sparklines
+  sparkTemp.data.labels = labels; sparkTemp.data.datasets[0].data = s.temp; sparkTemp.update();
+  sparkHum.data.labels = labels; sparkHum.data.datasets[0].data = s.hum; sparkHum.update();
+  sparkPM1.data.labels = labels; sparkPM1.data.datasets[0].data = s.pm1; sparkPM1.update();
+  sparkPM25.data.labels = labels; sparkPM25.data.datasets[0].data = s.pm25; sparkPM25.update();
+  sparkPM10.data.labels = labels; sparkPM10.data.datasets[0].data = s.pm10; sparkPM10.update();
+  sparkCO2.data.labels = labels; sparkCO2.data.datasets[0].data = s.co2; sparkCO2.update();
+}
+
+/* ================= SSE CONNECTION ================== */
+
+function connectSSE() {
+  try {
+    // Đóng kết nối cũ nếu có
+    if (eventSource) {
+      eventSource.close();
+    }
+    
+    console.log(`🔗 Connecting to SSE: ${SSE_URL}`);
+    eventSource = new EventSource(SSE_URL);
+    
+    eventSource.onopen = () => {
+      isConnected = true;
+      reconnectAttempts = 0;
+      console.log('✅ SSE connected');
+      showToast('✅ Kết nối realtime thành công');
+      
+      // Load history data when connected
+      loadHistoryData();
+    };
+    
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        console.log('📩 SSE received:', data);
+        
+        // Xử lý dữ liệu sensor
+        if (data.type === 'SENSOR_DATA' && data.data) {
+          processSensorData(data.data);
+        }
+        // Xử lý kết nối thành công
+        else if (data.type === 'CONNECTED') {
+          console.log('SSE connection established');
+        }
+      } catch (error) {
+        console.error('Error parsing SSE message:', error);
+      }
+    };
+    
+    eventSource.onerror = (error) => {
+      console.error('SSE error:', error);
+      isConnected = false;
+      
+      if (eventSource.readyState === EventSource.CLOSED) {
+        console.log('SSE connection closed');
+        
+        // Thử kết nối lại
+        if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+          reconnectAttempts++;
+          const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
+          console.log(`Reconnecting in ${delay/1000} seconds... (attempt ${reconnectAttempts})`);
+          
+          showToast(`⚠️ Mất kết nối, đang thử lại... (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+          
+          setTimeout(() => {
+            connectSSE();
+          }, delay);
+        } else {
+          showToast('❌ Không thể kết nối đến server. Vui lòng làm mới trang.');
+          startPollingFallback();
+        }
+      }
+    };
+    
+  } catch (error) {
+    console.error('Error connecting SSE:', error);
+  }
+}
+
+/* ================= FALLBACK POLLING ================== */
+
+let pollingInterval = null;
+
+function startPollingFallback() {
+  if (pollingInterval) clearInterval(pollingInterval);
+  
+  console.log('Starting polling fallback...');
+  showToast('⚠️ Đang sử dụng polling fallback');
+  
+  // Polling mỗi 5 giây
+  pollingInterval = setInterval(() => {
+    fetchLatestData();
+  }, 5000);
+  
+  // Gọi ngay lần đầu
+  fetchLatestData();
+}
+
+function stopPollingFallback() {
+  if (pollingInterval) {
+    clearInterval(pollingInterval);
+    pollingInterval = null;
+  }
+}
+
+/* ================= API FUNCTIONS ================== */
+
+async function fetchLatestData() {
+  try {
+    const response = await fetch(`${API_BASE_URL}/sensor-data/latest`);
+    if (!response.ok) throw new Error('Network response was not ok');
+    
+    const data = await response.json();
+    if (data) {
+      processSensorData(data);
+    }
+  } catch (error) {
+    console.error('Error fetching latest data:', error);
+  }
+}
+
+async function loadHistoryData() {
+  try {
+    const response = await fetch(`${API_BASE_URL}/sensor-data/history?limit=50`);
+    if (!response.ok) throw new Error('Network response was not ok');
+    
+    const historyData = await response.json();
+    
+    if (historyData && historyData.length > 0) {
+      // Reset arrays
+      labels.length = 0;
+      series.temp.length = 0;
+      series.hum.length = 0;
+      series.pm1.length = 0;
+      series.pm25.length = 0;
+      series.pm10.length = 0;
+      series.co2.length = 0;
+      
+      // Sắp xếp từ cũ đến mới
+      const reversed = [...historyData].reverse();
+      
+      reversed.forEach(item => {
+        const ts = new Date(item.timestamp).toLocaleTimeString('vi-VN');
+        labels.push(ts);
+        series.temp.push(item.temperature || 0);
+        series.hum.push(item.humidity || 0);
+        series.pm1.push(item.pm1_0 || 0);
+        series.pm25.push(item.pm2_5 || 0);
+        series.pm10.push(item.pm10_0 || 0);
+        series.co2.push(item.CO2 || 0);
+      });
+      
+      // Cập nhật biểu đồ
+      updateAllCharts();
+    }
+  } catch (error) {
+    console.error('Error loading history data:', error);
+  }
+}
+
+function updateAllCharts() {
+  chartTemp.data.labels = labels;
+  chartTemp.data.datasets[0].data = series.temp;
+  chartTemp.update('none');
+  
+  chartHum.data.labels = labels;
+  chartHum.data.datasets[0].data = series.hum;
+  chartHum.update('none');
+  
+  chartPM1.data.labels = labels;
+  chartPM1.data.datasets[0].data = series.pm1;
+  chartPM1.update('none');
+  
+  chartPM25.data.labels = labels;
+  chartPM25.data.datasets[0].data = series.pm25;
+  chartPM25.update('none');
+  
+  chartPM10.data.labels = labels;
+  chartPM10.data.datasets[0].data = series.pm10;
+  chartPM10.update('none');
+  
+  chartCO2.data.labels = labels;
+  chartCO2.data.datasets[0].data = series.co2;
+  chartCO2.update('none');
+  
+  chartCombined.data.labels = labels;
+  chartCombined.data.datasets[0].data = series.pm1;
+  chartCombined.data.datasets[1].data = series.pm25;
+  chartCombined.data.datasets[2].data = series.pm10;
+  chartCombined.update('none');
+  
+  // Sparklines
+  sparkTemp.data.labels = labels;
+  sparkTemp.data.datasets[0].data = series.temp;
+  sparkTemp.update('none');
+  
+  sparkHum.data.labels = labels;
+  sparkHum.data.datasets[0].data = series.hum;
+  sparkHum.update('none');
+  
+  sparkPM1.data.labels = labels;
+  sparkPM1.data.datasets[0].data = series.pm1;
+  sparkPM1.update('none');
+  
+  sparkPM25.data.labels = labels;
+  sparkPM25.data.datasets[0].data = series.pm25;
+  sparkPM25.update('none');
+  
+  sparkPM10.data.labels = labels;
+  sparkPM10.data.datasets[0].data = series.pm10;
+  sparkPM10.update('none');
+  
+  sparkCO2.data.labels = labels;
+  sparkCO2.data.datasets[0].data = series.co2;
+  sparkCO2.update('none');
+}
+
+/* ================= PROCESS SENSOR DATA ================== */
+
+function processSensorData(data) {
+  if (!data) return;
+  
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString('vi-VN');
+  
+  // Reset ages khi nhận dữ liệu mới
+  ages.temp = 0; ages.hum = 0; ages.pm1 = 0; ages.pm25 = 0; ages.pm10 = 0; ages.co2 = 0;
+  
+  // Cập nhật từng giá trị sensor với định dạng đúng
+  if (data.temperature !== undefined && data.temperature !== null) {
+    ui.temp.textContent = `${parseFloat(data.temperature).toFixed(1)} °C`;
+    ui.tempTime.textContent = timeStr;
+    ui.tempAge.textContent = '0';
+    latest.temp = data.temperature;
+  }
+  
+  if (data.humidity !== undefined && data.humidity !== null) {
+    ui.hum.textContent = `${parseFloat(data.humidity).toFixed(1)} %`;
+    ui.humTime.textContent = timeStr;
+    ui.humAge.textContent = '0';
+    latest.hum = data.humidity;
+  }
+  
+  if (data.pm1_0 !== undefined && data.pm1_0 !== null) {
+    ui.pm1.textContent = `${data.pm1_0} µg/m³`;
+    ui.pm1Time.textContent = timeStr;
+    ui.pm1Age.textContent = '0';
+    latest.pm1 = data.pm1_0;
+  }
+  
+  if (data.pm2_5 !== undefined && data.pm2_5 !== null) {
+    ui.pm25.textContent = `${data.pm2_5} µg/m³`;
+    ui.pm25Time.textContent = timeStr;
+    ui.pm25Age.textContent = '0';
+    latest.pm25 = data.pm2_5;
+  }
+  
+  if (data.pm10_0 !== undefined && data.pm10_0 !== null) {
+    ui.pm10.textContent = `${data.pm10_0} µg/m³`;
+    ui.pm10Time.textContent = timeStr;
+    ui.pm10Age.textContent = '0';
+    latest.pm10 = data.pm10_0;
+  }
+  
+  if (data.CO2 !== undefined && data.CO2 !== null) {
+    ui.co2.textContent = `${data.CO2} ppm`;
+    ui.co2Time.textContent = timeStr;
+    ui.co2Age.textContent = '0';
+    latest.co2 = data.CO2;
+  }
+  
+  // Thêm vào biểu đồ và lịch sử
+  const ts = now.toLocaleString('vi-VN');
+  const chartData = {
+    temp: data.temperature,
+    hum: data.humidity,
+    pm1: data.pm1_0,
+    pm25: data.pm2_5,
+    pm10: data.pm10_0,
+    co2: data.CO2
+  };
+  
+  // Kiểm tra ngưỡng
+  checkThresholds(
+    chartData.temp,
+    chartData.hum,
+    chartData.pm1,
+    chartData.pm25,
+    chartData.pm10,
+    chartData.co2
+  );
+  
+  // Thêm vào biểu đồ nếu có đủ dữ liệu
+  if (Object.values(chartData).every(v => v !== null && v !== undefined)) {
+    pushPoint(
+      ts,
+      parseFloat(chartData.temp),
+      parseFloat(chartData.hum),
+      parseInt(chartData.pm1),
+      parseInt(chartData.pm25),
+      parseInt(chartData.pm10),
+      parseInt(chartData.co2)
+    );
+  }
+  
+  // Thêm vào lịch sử bảng
+  const historyRow = {
+    ts,
+    t: chartData.temp !== undefined ? parseFloat(chartData.temp).toFixed(1) : '--',
+    h: chartData.hum !== undefined ? parseFloat(chartData.hum).toFixed(1) : '--',
+    pm1: chartData.pm1 !== undefined ? chartData.pm1 : '--',
+    pm25: chartData.pm25 !== undefined ? chartData.pm25 : '--',
+    pm10: chartData.pm10 !== undefined ? chartData.pm10 : '--',
+    c: chartData.co2 !== undefined ? chartData.co2 : '--',
+    ages: { ...ages }
+  };
+  
+  pushHistory(
+    historyRow.ts,
+    historyRow.t,
+    historyRow.h,
+    historyRow.pm1,
+    historyRow.pm25,
+    historyRow.pm10,
+    historyRow.c,
+    historyRow.ages
+  );
+}
+
+/* ================= CÁC HÀM HIỆN CÓ ================== */
+
+/* helper: show toast (simple) */
+function showToast(msg, time=1200){
+  ui.alertBar.style.display = 'block';
+  ui.alertBar.style.background = 'linear-gradient(90deg,#007bff,#0056d6)';
+  ui.alertBar.textContent = msg;
+  setTimeout(()=>{ ui.alertBar.style.display='none'; }, time);
+}
+
+/* show critical alert */
+let alertTimeout = null;
+function showCritical(msg){
+  ui.alertBar.style.display = 'block';
+  ui.alertBar.style.background = 'linear-gradient(90deg,var(--danger), #ff6b6b)';
+  ui.alertBar.textContent = msg;
+  try{ ui.alertSound.currentTime = 0; ui.alertSound.play(); }catch(e){}
+  if(alertTimeout) clearTimeout(alertTimeout);
+  alertTimeout = setTimeout(()=>{ ui.alertBar.style.display='none'; }, 8000);
+}
+
+/* history store in-memory */
+let history = [];
+function pushHistory(ts, t, h, pm1, pm25, pm10, c, agesSnap){
+  const row = { ts, t, h, pm1, pm25, pm10, c, ages: agesSnap };
+  history.unshift(row);
+  if(history.length>200) history.pop();
+  renderHistory();
+}
+
+/* render history table */
+function renderHistory(){
+  const tbody = ui.historyTable;
+  tbody.innerHTML = '';
+  const q = ui.searchInput.value.trim().toLowerCase();
+  for(const r of history){
+    if(q && !r.ts.toLowerCase().includes(q)) continue;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${r.ts}</td>
+      <td>${r.t}</td><td>${r.h}</td><td>${r.pm1}</td><td>${r.pm25}</td><td>${r.pm10}</td><td>${r.c}</td>
+      <td>${r.ages.temp}</td><td>${r.ages.hum}</td><td>${r.ages.pm1}</td><td>${r.ages.pm25}</td><td>${r.ages.pm10}</td><td>${r.ages.co2}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+ui.searchInput.addEventListener('input', renderHistory);
+ui.clearHistoryBtn.addEventListener('click', ()=>{ history=[]; renderHistory(); });
+
+/* threshold checking */
+function checkThresholds(t, h, pm1, pm25, pm10, c){
+  const pm1Thr = Number(localStorage.getItem(storageKeys.pm1) || thrPM1Input.value);
+  const pm25Thr = Number(localStorage.getItem(storageKeys.pm25) || thrPM25Input.value);
+  const pm10Thr = Number(localStorage.getItem(storageKeys.pm10) || thrPM10Input.value);
+  const co2Thr = Number(localStorage.getItem(storageKeys.co2) || thrCO2Input.value);
+  
+  let alertMsg = '';
+  let highlightCardId = '';
+  
+  const alerts = [];
+  
+  if(pm1 !== null && pm1 !== undefined && pm1 > pm1Thr){
+    alerts.push(`PM1.0: ${pm1} > ${pm1Thr} µg/m³`);
+    highlightCardId = highlightCardId || 'card-pm1';
+  }
+  if(pm25 !== null && pm25 !== undefined && pm25 > pm25Thr){
+    alerts.push(`PM2.5: ${pm25} > ${pm25Thr} µg/m³`);
+    highlightCardId = highlightCardId || 'card-pm25';
+  }
+  if(pm10 !== null && pm10 !== undefined && pm10 > pm10Thr){
+    alerts.push(`PM10: ${pm10} > ${pm10Thr} µg/m³`);
+    highlightCardId = highlightCardId || 'card-pm10';
+  }
+  if(c !== null && c !== undefined && c > co2Thr){
+    alerts.push(`CO₂: ${c} > ${co2Thr} ppm`);
+    highlightCardId = highlightCardId || 'card-co2';
+  }
+  
+  if(alerts.length > 0){
+    alertMsg = alerts.join(' | ');
+    showCritical(`⚠️ CẢNH BÁO: ${alertMsg}`);
+    
+    if(highlightCardId) highlightCard(highlightCardId, true);
+    
+    if(pm1 > pm1Thr) highlightCard('card-pm1', true);
+    if(pm25 > pm25Thr) highlightCard('card-pm25', true);
+    if(pm10 > pm10Thr) highlightCard('card-pm10', true);
+    if(c > co2Thr) highlightCard('card-co2', true);
+  } else {
+    highlightCard('card-pm1', false);
+    highlightCard('card-pm25', false);
+    highlightCard('card-pm10', false);
+    highlightCard('card-co2', false);
+  }
+}
+
+/* small card highlight */
+function highlightCard(id, flag){
+  const el = document.getElementById(id);
+  if(!el) return;
+  if(flag){
+    el.style.boxShadow = '0 10px 30px rgba(229,29,72,0.12)';
+    el.querySelector('.value').style.color = getComputedStyle(document.body).getPropertyValue('--danger') || '#e11d48';
+  } else {
+    el.style.boxShadow = '';
+    el.querySelector('.value').style.color = getComputedStyle(document.body).getPropertyValue('--accent') || '#007bff';
+  }
+}
+
+/* keyboard: t to toggle theme */
+window.addEventListener('keydown', (e)=>{ if(e.key==='t') { toggleThemeBtn.click(); } });
+
+/* ================= INITIALIZE ================== */
+
+// Khởi động kết nối SSE
+connectSSE();
+
+// Tải dữ liệu lịch sử ban đầu
+loadHistoryData();
+
+// Tự động kết nối lại khi tab được focus lại
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && !isConnected) {
+    console.log('Tab active, reconnecting SSE...');
+    connectSSE();
+  }
+});
+
+console.info('Dashboard loaded - Connected to backend server');
+</script>
+</body>
+</html>
